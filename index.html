@@ -3,8 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#123a5d">
+  <meta name="theme-color" content="#123a63">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="SPD出荷">
   <title>SPD出荷チェッカー</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -117,15 +123,6 @@
     </section>
   </main>
 
-  <div id="skipDialog" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="skipDialogTitle" hidden>
-    <div class="modal-card">
-      <h2 id="skipDialogTitle">この商品の照合をSKIPしますか？</h2>
-      <p id="skipConfirmProduct" class="modal-product"></p>
-      <label for="skipReason">理由（任意）</label>
-      <select id="skipReason"><option>作業者SKIP</option><option>バーコードなし</option><option>バーコード読取不可</option><option>商品確認済み</option><option>その他</option></select>
-      <div class="modal-actions"><button id="confirmSkipButton" class="button button--skip" type="button">SKIP実行</button><button id="cancelSkipButton" class="button button--secondary" type="button">戻る</button></div>
-    </div>
-  </div>
   <script src="app.js"></script>
 </body>
 </html>

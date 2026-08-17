@@ -13,6 +13,7 @@ const state = {
   mode: "container", pendingSpdLabel: null, scannerBuffer: "", scannerTimer: null
 };
 let successSound = null;
+let productSuccessSound = null;
 let alertSound = null;
 let completionSound = null;
 let historyDbPromise = null;
@@ -212,6 +213,11 @@ function setPendingSpdLabel(result, now = new Date()) {
   state.pendingSpdLabel = { row: result.row, labelKey: result.labelKey, spdRaw: result.spdRaw || "", spdReadAt: now.toISOString(), lastProductAttempt: null };
   state.mode = "product"; saveState(); return true;
 }
+function acceptPendingSpdLabel(result, effects = {}) {
+  const accepted = setPendingSpdLabel(result);
+  if (accepted) (effects.playSuccess || playSuccessSound)();
+  return accepted;
+}
 function cancelPendingSpdLabel() { if (!state.pendingSpdLabel) return false; state.pendingSpdLabel = null; state.mode = state.currentDepartment ? "spd" : "container"; saveState(); return true; }
 
 function detectProductBarcodeType(rawValue) {
@@ -314,7 +320,8 @@ function completeItemCheck(rawValue, effects = {}) {
   const record = createHistoryRecord({ result: "OK", detail: "商品一致", pending, product: validation.product, completedAt: new Date().toISOString() });
   state.pendingSpdLabel = null; state.mode = "spd"; saveState(); void saveScanHistory(record);
   const afterCounts = getTargetCounts(), targetCompleted = didCompleteTarget(beforeCounts, afterCounts);
-  if (targetCompleted) (effects.playCompletion || playCompletionSound)(); else (effects.playSuccess || playSuccessSound)();
+  if (targetCompleted) (effects.playCompletion || playCompletionSound)();
+  else (effects.playProductSuccess || effects.playSuccess || playProductSuccessSound)();
   return { ...validation, completed: true, targetCompleted, beforeCounts, afterCounts, record };
 }
 function canSkip() {
@@ -329,6 +336,7 @@ function executeSkip(reason = "作業者SKIP", effects = {}) {
   state.pendingSpdLabel = null; state.mode = "spd"; saveState(); void saveScanHistory(record);
   const afterCounts = getTargetCounts(), completed = didCompleteTarget(beforeCounts, afterCounts);
   if (completed) (effects.playCompletion || playCompletionSound)();
+  else (effects.playProductSuccess || playProductSuccessSound)();
   return { ok: true, code: "SKIP", title: "SKIP", message: "商品バーコード照合を作業者確認で完了しました。", record, completed, beforeCounts, afterCounts };
 }
 
@@ -380,14 +388,15 @@ async function importMaster(file) {
   finally { elements.masterFile.value = ""; }
 }
 
-function initAudio() { if (!successSound) { successSound = new Audio("ok.wav"); successSound.preload = "auto"; } if (!alertSound) { alertSound = new Audio("alert.wav"); alertSound.preload = "auto"; } if (!completionSound) { completionSound = new Audio("complete.wav"); completionSound.preload = "auto"; } successSound.load(); alertSound.load(); completionSound.load(); }
+function initAudio() { if (!successSound) { successSound = new Audio("ok.wav"); successSound.preload = "auto"; } if (!productSuccessSound) { productSuccessSound = new Audio("product-ok.wav"); productSuccessSound.preload = "auto"; } if (!alertSound) { alertSound = new Audio("alert.wav"); alertSound.preload = "auto"; } if (!completionSound) { completionSound = new Audio("complete.wav"); completionSound.preload = "auto"; } successSound.load(); productSuccessSound.load(); alertSound.load(); completionSound.load(); }
 async function unlockAudio() {
-  initAudio(); const sounds = [successSound, alertSound, completionSound];
+  initAudio(); const sounds = [successSound, productSuccessSound, alertSound, completionSound];
   try { sounds.forEach((sound) => { sound.muted = true; }); await Promise.all(sounds.map((sound) => sound.play())); sounds.forEach((sound) => { sound.pause(); sound.currentTime = 0; sound.muted = false; }); elements.audioStatus.textContent = "有効"; }
   catch (error) { sounds.forEach((sound) => { if (sound) sound.muted = false; }); elements.audioStatus.textContent = "有効化できません"; console.error("音声の有効化に失敗しました。", error); }
 }
-function playSound(label) { if (!successSound) initAudio(); const target = label === "success" ? successSound : label === "completion" ? completionSound : alertSound; target.currentTime = 0; target.play().catch((error) => { console.error("音声を再生できません。", error); if (elements.audioStatus) elements.audioStatus.textContent = "要タップ確認"; }); }
+function playSound(label) { if (!successSound) initAudio(); const target = label === "success" ? successSound : label === "product-success" ? productSuccessSound : label === "completion" ? completionSound : alertSound; target.currentTime = 0; target.play().catch((error) => { console.error("音声を再生できません。", error); if (elements.audioStatus) elements.audioStatus.textContent = "要タップ確認"; }); }
 function playSuccessSound() { playSound("success"); }
+function playProductSuccessSound() { playSound("product-success"); }
 function playAlertSound() { playSound("alert"); }
 function playCompletionSound() { playSound("completion"); }
 function handleContainerDepartmentScan(rawValue, effects = {}) { const result = setContainerDepartment(rawValue); if (result.ok) (effects.playSuccess || playSuccessSound)(); else (effects.playAlert || playAlertSound)(); return result; }
@@ -407,7 +416,7 @@ async function processScan(rawValue) {
     else { const result = handleContainerDepartmentScan(value); if (result.ok) { renderAll(); showResult("ok", "オリコン指定 OK", "SPDラベルQRを読み取ってください。", [["施設名称", result.department.facilityName], ["部署名称", result.department.departmentName], ["施設コード", result.department.facilityCode], ["部署コード", result.department.departmentCode]]); } else { void saveNgHistory(result); showResult("ng", result.title, result.message, []); } }
   } else if (state.mode === "spd") {
     if (!/^\d{32}$/.test(value)) { const result = { code: "SCAN_ORDER", title: "読取順序エラー", message: "SPDラベルを先に読み取ってください。" }; void saveNgHistory(result); showResult("ng", result.title, result.message, []); playAlertSound(); }
-    else { const result = validateSpdLabel(value); if (result.ok) { setPendingSpdLabel(result); renderAll(); showResult("pending", "商品バーコード待ち", result.message, [["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]], ["JAN", result.row["JANコード"]], ["ラベルキー", result.labelKey]]); } else { void saveNgHistory(result); showResult("ng", result.title, result.message, getResultDetails(result)); playAlertSound(); } }
+    else { const result = validateSpdLabel(value); if (result.ok) { acceptPendingSpdLabel(result); renderAll(); showResult("pending", "商品バーコード待ち", result.message, [["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]], ["JAN", result.row["JANコード"]], ["ラベルキー", result.labelKey]]); } else { void saveNgHistory(result); showResult("ng", result.title, result.message, getResultDetails(result)); playAlertSound(); } }
   } else if (/^\d{20}$/.test(value) || /^\d{32}$/.test(value)) {
     const result = { code: "SCAN_ORDER", title: "読取順序エラー", message: "現在の商品照合を完了するか、SPDラベル読取を取消してください。", pending: state.pendingSpdLabel };
     void saveNgHistory(result); showResult("ng", result.title, result.message, getResultDetails(result)); playAlertSound();
@@ -418,11 +427,14 @@ async function processScan(rawValue) {
 }
 function handleClearDepartment() { clearContainerDepartment(); renderAll(); showResult("idle", "オリコン指定解除", "20桁のオリコンラベルを読み取ってください。", []); }
 function handleCancelPending() { if (cancelPendingSpdLabel()) { renderAll(); showResult("idle", "SPDラベル読取取消", "SPDラベル待ちへ戻りました。", []); } }
-function showSkipDialog() { if (!canSkip()) return; const row = state.pendingSpdLabel.row; elements.skipConfirmProduct.textContent = `${getProductNumber(row)} ／ ${row["品名"]}`; elements.skipReason.value = "作業者SKIP"; elements.skipDialog.hidden = false; }
-function hideSkipDialog() { elements.skipDialog.hidden = true; }
-function confirmSkip() { const result = executeSkip(elements.skipReason.value); hideSkipDialog(); renderAll(); if (result.ok) showResult("skip", "SKIP", result.message, [["製品番号", result.record.productNumber], ["品名", result.record.productName], ["SKIP理由", result.record.skipReason], ["ラベルキー", result.record.labelKey]]); else { showResult("ng", result.title, result.message, []); playAlertSound(); } }
+function handleSkip() {
+  const result = executeSkip("作業者SKIP");
+  renderAll();
+  if (result.ok) showResult("skip", "SKIP", result.message, [["製品番号", result.record.productNumber], ["品名", result.record.productName], ["SKIP理由", result.record.skipReason], ["ラベルキー", result.record.labelKey]]);
+  else { showResult("ng", result.title, result.message, []); playAlertSound(); }
+}
 function handleGlobalKeydown(event) {
-  const ignored = [elements.manualScanInput, elements.targetStartDate, elements.targetEndDate, elements.masterFile, elements.historySearch, elements.historyStartDate, elements.historyEndDate, elements.historyFacility, elements.historyDepartment, elements.historyResult, elements.skipReason];
+  const ignored = [elements.manualScanInput, elements.targetStartDate, elements.targetEndDate, elements.masterFile, elements.historySearch, elements.historyStartDate, elements.historyEndDate, elements.historyFacility, elements.historyDepartment, elements.historyResult];
   if (ignored.includes(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.key === "Enter") { if (state.scannerBuffer) { event.preventDefault(); const scan = state.scannerBuffer; state.scannerBuffer = ""; clearTimeout(state.scannerTimer); renderScannerStatus(); void processScan(scan); } return; }
   if (event.key.length === 1) { state.scannerBuffer += event.key; clearTimeout(state.scannerTimer); state.scannerTimer = setTimeout(() => { state.scannerBuffer = ""; renderScannerStatus(); }, 1500); renderScannerStatus(); }
@@ -490,11 +502,11 @@ async function shareHistoryCsv(records = filterHistory(state.history, getHistory
 function renderAll() { elements.targetStartDate.value = state.targetStartDate; elements.targetEndDate.value = state.targetEndDate; renderMode(); renderDepartment(); renderPendingPanel(); renderCounts(); renderUnreadList(); renderMasterInfo(); renderScannerStatus(); renderHistory(); }
 function switchSection(sectionId) { document.querySelectorAll(".screen").forEach((section) => section.classList.toggle("is-active", section.id === sectionId)); document.querySelectorAll(".tab-button").forEach((button) => button.classList.toggle("is-active", button.dataset.section === sectionId)); if (sectionId === "unreadSection") renderUnreadList(); if (sectionId === "historySection") renderHistory(); window.scrollTo({ top: 0, behavior: "smooth" }); }
 function cacheElements() {
-  ["masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modeStatus", "clearDepartmentButton", "currentFacility", "currentDepartment", "currentDepartmentCode", "resultPanel", "resultTitle", "resultMessage", "resultDetails", "pendingProductPanel", "pendingProductNumber", "pendingProductName", "skipButton", "cancelPendingButton", "processingBreakdown", "targetCount", "readCount", "unreadCount", "manualScanInput", "manualScanButton", "scannerBufferStatus", "refreshUnreadButton", "unreadPeriodLabel", "unreadDepartmentLabel", "unreadTargetCount", "unreadReadCount", "unreadRemainingCount", "unreadList", "historyStartDate", "historyEndDate", "historyFacility", "historyDepartment", "historyResult", "historySearch", "historyCount", "historyList", "exportHistoryButton", "shareHistoryButton", "clearHistoryButton", "historyMessage", "skipDialog", "skipConfirmProduct", "skipReason", "confirmSkipButton", "cancelSkipButton", "masterFile", "importMessage", "masterLoaded", "masterFileName", "masterImportedAt", "masterRowCount", "masterMinDate", "masterMaxDate", "masterDuplicateCount", "enableAudioButton", "audioStatus"].forEach((id) => { elements[id] = document.getElementById(id); });
+  ["masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modeStatus", "clearDepartmentButton", "currentFacility", "currentDepartment", "currentDepartmentCode", "resultPanel", "resultTitle", "resultMessage", "resultDetails", "pendingProductPanel", "pendingProductNumber", "pendingProductName", "skipButton", "cancelPendingButton", "processingBreakdown", "targetCount", "readCount", "unreadCount", "manualScanInput", "manualScanButton", "scannerBufferStatus", "refreshUnreadButton", "unreadPeriodLabel", "unreadDepartmentLabel", "unreadTargetCount", "unreadReadCount", "unreadRemainingCount", "unreadList", "historyStartDate", "historyEndDate", "historyFacility", "historyDepartment", "historyResult", "historySearch", "historyCount", "historyList", "exportHistoryButton", "shareHistoryButton", "clearHistoryButton", "historyMessage", "masterFile", "importMessage", "masterLoaded", "masterFileName", "masterImportedAt", "masterRowCount", "masterMinDate", "masterMaxDate", "masterDuplicateCount", "enableAudioButton", "audioStatus"].forEach((id) => { elements[id] = document.getElementById(id); });
 }
 function bindEvents() {
   document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchSection(button.dataset.section)));
-  elements.clearDepartmentButton.addEventListener("click", handleClearDepartment); elements.cancelPendingButton.addEventListener("click", handleCancelPending); elements.skipButton.addEventListener("click", showSkipDialog); elements.confirmSkipButton.addEventListener("click", confirmSkip); elements.cancelSkipButton.addEventListener("click", hideSkipDialog);
+  elements.clearDepartmentButton.addEventListener("click", handleClearDepartment); elements.cancelPendingButton.addEventListener("click", handleCancelPending); elements.skipButton.addEventListener("click", handleSkip);
   const handlePeriodChange = () => {
     state.targetStartDate = elements.targetStartDate.value; state.targetEndDate = elements.targetEndDate.value;
     if (state.pendingSpdLabel && (!validateTargetPeriod().ok || !isRowInTargetPeriod(state.pendingSpdLabel.row))) cancelPendingSpdLabel();
@@ -508,12 +520,18 @@ function bindEvents() {
   elements.enableAudioButton.addEventListener("click", unlockAudio); window.addEventListener("keydown", handleGlobalKeydown);
 }
 async function init() { cacheElements(); restoreState(); initAudio(); bindEvents(); renderAll(); await loadScanHistory(); if (!state.masterInfo) showResult("idle", "待機中", "マスターを読み込んでください。", []); else if (!state.currentDepartment) showResult("idle", "待機中", "20桁のオリコンラベルを読み取ってください。", []); else showResult("idle", "待機中", "SPDラベルQRを読み取ってください。", []); document.body.dataset.appReady = "true"; }
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch((error) => console.error("オフライン機能を登録できません。", error)));
+  }
+}
+if (typeof window !== "undefined") registerServiceWorker();
 if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded", () => { void init(); });
 
 if (typeof module !== "undefined" && module.exports) module.exports = {
   state, parseTsv, normalizeQr, buildLabelKey, getExpectedCenterCode, rebuildIndexes, findLabel,
   parseContainerBarcode, setContainerDepartment, clearContainerDepartment, reconcileCurrentDepartment,
-  validateSpdLabel, setPendingSpdLabel, cancelPendingSpdLabel, validateTargetPeriod, getCurrentTargetLabels,
+  validateSpdLabel, setPendingSpdLabel, acceptPendingSpdLabel, cancelPendingSpdLabel, validateTargetPeriod, getCurrentTargetLabels,
   getUnreadLabels, getTargetCounts, normalizeJanForComparison, detectProductBarcodeType, parseGs1Barcode,
   extractJanFromBarcode, validateProductBarcode, completeItemCheck, canSkip, executeSkip,
   createHistoryRecord, saveScanHistory, loadScanHistory, clearScanHistory, filterHistory, buildHistoryCsv,

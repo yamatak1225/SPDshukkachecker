@@ -26,15 +26,15 @@
     <section id="checkSection" class="screen is-active" aria-labelledby="checkHeading">
       <h2 id="checkHeading" class="visually-hidden">出荷チェック</h2>
 
-      <div class="period-card card">
-        <p class="card-label">出荷チェック対象期間</p>
-        <div class="period-inputs">
-          <label for="targetStartDate">開始日<input id="targetStartDate" type="date"></label>
-          <span class="period-separator" aria-hidden="true">～</span>
-          <label for="targetEndDate">終了日<input id="targetEndDate" type="date"></label>
+      <section class="department-card" aria-labelledby="departmentHeading">
+        <div class="department-heading-row">
+          <p id="departmentHeading" class="card-label">現在のオリコン</p>
+          <button id="clearDepartmentButton" class="button button--danger-light department-clear-button" type="button" disabled>部署指定解除</button>
         </div>
-        <p id="periodError" class="field-error" role="alert"></p>
-      </div>
+        <p id="currentFacility" class="facility-name">施設未指定</p>
+        <p id="currentDepartment" class="department-name">部署ラベルを読み取ってください</p>
+        <p id="currentDepartmentCode" class="department-code">部署コード：―</p>
+      </section>
 
       <section id="resultPanel" class="result-panel result-panel--idle" aria-live="assertive" aria-atomic="true">
         <div class="result-topline">
@@ -52,15 +52,15 @@
         <div class="count-card count-card--unread"><span>未読取</span><strong id="unreadCount">0</strong></div>
       </div>
 
-      <section class="department-card" aria-labelledby="departmentHeading">
-        <div class="department-heading-row">
-          <p id="departmentHeading" class="card-label">現在のオリコン</p>
-          <button id="clearDepartmentButton" class="button button--danger-light department-clear-button" type="button" disabled>部署指定解除</button>
+      <div class="period-card card">
+        <p class="card-label">出荷チェック対象期間</p>
+        <div class="period-inputs">
+          <label for="targetStartDate">開始日<input id="targetStartDate" type="date"></label>
+          <span class="period-separator" aria-hidden="true">～</span>
+          <label for="targetEndDate">終了日<input id="targetEndDate" type="date"></label>
         </div>
-        <p id="currentFacility" class="facility-name">施設未指定</p>
-        <p id="currentDepartment" class="department-name">部署ラベルを読み取ってください</p>
-        <p id="currentDepartmentCode" class="department-code">部署コード：―</p>
-      </section>
+        <p id="periodError" class="field-error" role="alert"></p>
+      </div>
 
       <details class="manual-panel">
         <summary>ローカルテスト用の手入力</summary>

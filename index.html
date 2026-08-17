@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123a63">
+  <title>SPD出荷チェッカー</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">物流センター 出荷照合</p>
+      <h1>SPD出荷チェッカー</h1>
+    </div>
+    <span id="masterStatusBadge" class="status-badge status-badge--ng">マスター未読込</span>
+  </header>
+
+  <nav class="tab-bar" aria-label="画面切替">
+    <button class="tab-button is-active" type="button" data-section="checkSection">出荷チェック</button>
+    <button class="tab-button" type="button" data-section="unreadSection">未読取一覧</button>
+    <button class="tab-button" type="button" data-section="masterSection">マスター管理</button>
+  </nav>
+
+  <main>
+    <section id="checkSection" class="screen is-active" aria-labelledby="checkHeading">
+      <h2 id="checkHeading" class="visually-hidden">出荷チェック</h2>
+
+      <div class="period-card card">
+        <p class="card-label">出荷チェック対象期間</p>
+        <div class="period-inputs">
+          <label for="targetStartDate">開始日<input id="targetStartDate" type="date"></label>
+          <span class="period-separator" aria-hidden="true">～</span>
+          <label for="targetEndDate">終了日<input id="targetEndDate" type="date"></label>
+        </div>
+        <p id="periodError" class="field-error" role="alert"></p>
+      </div>
+
+      <div id="modePanel" class="mode-panel mode-panel--container">
+        <p class="mode-label">現在の読取モード</p>
+        <p id="modeName" class="mode-name">オリコン部署指定</p>
+        <p id="modeInstruction" class="mode-instruction">オリコンの部署ラベルを読み取ってください</p>
+        <div class="mode-actions">
+          <button id="containerModeButton" class="button button--light" type="button">オリコン部署を変更</button>
+          <button id="spdModeButton" class="button button--light" type="button" disabled>SPDラベル読取へ</button>
+          <button id="clearDepartmentButton" class="button button--danger-light" type="button" disabled>部署指定解除</button>
+        </div>
+      </div>
+
+      <section class="department-card" aria-labelledby="departmentHeading">
+        <p id="departmentHeading" class="card-label">現在のオリコン</p>
+        <p id="currentFacility" class="facility-name">施設未指定</p>
+        <p id="currentDepartment" class="department-name">部署ラベルを読み取ってください</p>
+        <p id="currentDepartmentCode" class="department-code">部署コード：―</p>
+      </section>
+
+      <section id="resultPanel" class="result-panel result-panel--idle" aria-live="assertive" aria-atomic="true">
+        <p class="result-caption">最新判定</p>
+        <p id="resultTitle" class="result-title">待機中</p>
+        <p id="resultMessage" class="result-message">マスターを読み込んでください</p>
+        <dl id="resultDetails" class="result-details"></dl>
+      </section>
+
+      <div class="count-grid" aria-label="読取状況">
+        <div class="count-card"><span>対象総数</span><strong id="targetCount">0</strong></div>
+        <div class="count-card count-card--read"><span>読取済</span><strong id="readCount">0</strong></div>
+        <div class="count-card count-card--unread"><span>未読取</span><strong id="unreadCount">0</strong></div>
+      </div>
+
+      <details class="manual-panel">
+        <summary>ローカルテスト用の手入力</summary>
+        <label for="manualScanInput">バーコード・QR読取値</label>
+        <div class="manual-row">
+          <input id="manualScanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button id="manualScanButton" class="button" type="button">読取</button>
+        </div>
+      </details>
+
+      <p id="scannerBufferStatus" class="scanner-status">Bluetoothリーダー入力待機中</p>
+    </section>
+
+    <section id="unreadSection" class="screen" aria-labelledby="unreadHeading">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">対象期間のチェック漏れ確認</p>
+          <h2 id="unreadHeading">未読取一覧</h2>
+        </div>
+        <button id="refreshUnreadButton" class="button button--secondary" type="button">一覧を更新</button>
+      </div>
+      <div class="filter-summary" aria-label="現在の絞込条件">
+        <p id="unreadPeriodLabel">対象期間：―</p>
+        <p id="unreadDepartmentLabel">対象部署：指定なし（全体）</p>
+      </div>
+      <div class="count-grid">
+        <div class="count-card"><span>対象総数</span><strong id="unreadTargetCount">0</strong></div>
+        <div class="count-card count-card--read"><span>読取済</span><strong id="unreadReadCount">0</strong></div>
+        <div class="count-card count-card--unread"><span>未読取</span><strong id="unreadRemainingCount">0</strong></div>
+      </div>
+      <div id="unreadList" class="unread-list"></div>
+    </section>
+
+    <section id="masterSection" class="screen" aria-labelledby="masterHeading">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">データの取込と確認</p>
+          <h2 id="masterHeading">マスター管理</h2>
+        </div>
+      </div>
+
+      <section class="card master-import-card">
+        <label class="file-button" for="masterFile">ラベルマスタ.tsvを選択</label>
+        <input id="masterFile" class="visually-hidden" type="file" accept=".tsv,text/tab-separated-values,text/plain">
+        <p class="help-text">CP932（Shift-JIS系）のTSVを読み込みます。正常に検証できた場合だけ、現在のマスターと作業状態を置き換えます。</p>
+        <p id="importMessage" class="import-message" aria-live="polite"></p>
+      </section>
+
+      <section class="card">
+        <h3>マスター情報</h3>
+        <dl class="master-details">
+          <div><dt>状態</dt><dd id="masterLoaded">未読込</dd></div>
+          <div><dt>ファイル名</dt><dd id="masterFileName">―</dd></div>
+          <div><dt>取込日時</dt><dd id="masterImportedAt">―</dd></div>
+          <div><dt>取込件数</dt><dd id="masterRowCount">0件</dd></div>
+          <div><dt>伝票日付 最小</dt><dd id="masterMinDate">―</dd></div>
+          <div><dt>伝票日付 最大</dt><dd id="masterMaxDate">―</dd></div>
+          <div><dt>重複ラベルキー</dt><dd id="masterDuplicateCount">0件</dd></div>
+        </dl>
+      </section>
+
+      <section class="card">
+        <h3>音声</h3>
+        <p class="help-text">iPhoneでは、最初に一度タップすると音声を再生しやすくなります。</p>
+        <button id="enableAudioButton" class="button button--secondary" type="button">音声を有効化</button>
+        <span id="audioStatus" class="inline-status">未確認</span>
+      </section>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

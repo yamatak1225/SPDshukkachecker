@@ -1,25 +1,23 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#123a63">
+  <meta name="theme-color" content="#123a5d">
   <title>SPD出荷チェッカー</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="app-header">
-    <div>
-      <p class="eyebrow">物流センター 出荷照合</p>
-      <h1>SPD出荷チェッカー</h1>
-    </div>
+    <div><p class="eyebrow">物流センター 出荷照合</p><h1>SPD出荷チェッカー</h1></div>
     <span id="masterStatusBadge" class="status-badge status-badge--ng">マスター未読込</span>
   </header>
 
   <nav class="tab-bar" aria-label="画面切替">
-    <button class="tab-button is-active" type="button" data-section="checkSection">出荷チェック</button>
-    <button class="tab-button" type="button" data-section="unreadSection">未読取一覧</button>
-    <button class="tab-button" type="button" data-section="masterSection">マスター管理</button>
+    <button class="tab-button is-active" type="button" data-section="checkSection">出荷<br class="mobile-break">チェック</button>
+    <button class="tab-button" type="button" data-section="unreadSection">未読取<br class="mobile-break">一覧</button>
+    <button class="tab-button" type="button" data-section="historySection">読取<br class="mobile-break">履歴</button>
+    <button class="tab-button" type="button" data-section="masterSection">マスター<br class="mobile-break">管理</button>
   </nav>
 
   <main>
@@ -29,28 +27,38 @@
       <section class="department-card" aria-labelledby="departmentHeading">
         <div class="department-heading-row">
           <p id="departmentHeading" class="card-label">現在のオリコン</p>
-          <button id="clearDepartmentButton" class="button button--danger-light department-clear-button" type="button" disabled>部署指定解除</button>
+          <button id="clearDepartmentButton" class="button button--danger-light department-clear-button" type="button" disabled>指定解除</button>
         </div>
         <p id="currentFacility" class="facility-name">施設未指定</p>
-        <p id="currentDepartment" class="department-name">部署ラベルを読み取ってください</p>
-        <p id="currentDepartmentCode" class="department-code">部署コード：―</p>
+        <p id="currentDepartment" class="department-name">オリコンラベルを読み取ってください</p>
+        <p id="currentDepartmentCode" class="department-code">施設コード：―　部署コード：―</p>
       </section>
 
       <section id="resultPanel" class="result-panel result-panel--idle" aria-live="assertive" aria-atomic="true">
         <div class="result-topline">
           <p class="result-caption">最新判定</p>
-          <p id="modeStatus" class="mode-status mode-status--container">● オリコン部署待ち</p>
+          <p id="modeStatus" class="mode-status mode-status--container">● オリコンラベル待ち</p>
         </div>
         <p id="resultTitle" class="result-title">待機中</p>
         <p id="resultMessage" class="result-message">マスターを読み込んでください</p>
         <dl id="resultDetails" class="result-details"></dl>
+
+        <div id="pendingProductPanel" class="pending-product-panel" hidden>
+          <p class="pending-label">照合中の商品</p>
+          <p><span>製品番号</span><strong id="pendingProductNumber">―</strong></p>
+          <p><span>品名</span><strong id="pendingProductName">―</strong></p>
+          <p class="pending-instruction">商品JAN / GS1-128を読み取ってください</p>
+          <button id="skipButton" class="button button--skip" type="button">SKIP</button>
+          <button id="cancelPendingButton" class="button button--text" type="button">SPDラベル読取取消</button>
+        </div>
       </section>
 
       <div class="count-grid" aria-label="読取状況">
         <div class="count-card"><span>対象総数</span><strong id="targetCount">0</strong></div>
-        <div class="count-card count-card--read"><span>読取済</span><strong id="readCount">0</strong></div>
+        <div class="count-card count-card--read"><span>処理済</span><strong id="readCount">0</strong></div>
         <div class="count-card count-card--unread"><span>未読取</span><strong id="unreadCount">0</strong></div>
       </div>
+      <p id="processingBreakdown" class="processing-breakdown">OK：0件　SKIP：0件</p>
 
       <div class="period-card card">
         <p class="card-label">出荷チェック対象期間</p>
@@ -65,72 +73,59 @@
       <details class="manual-panel">
         <summary>ローカルテスト用の手入力</summary>
         <label for="manualScanInput">バーコード・QR読取値</label>
-        <div class="manual-row">
-          <input id="manualScanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false">
-          <button id="manualScanButton" class="button" type="button">読取</button>
-        </div>
+        <div class="manual-row"><input id="manualScanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"><button id="manualScanButton" class="button" type="button">読取</button></div>
       </details>
-
       <p id="scannerBufferStatus" class="scanner-status">Bluetoothリーダー入力待機中</p>
     </section>
 
     <section id="unreadSection" class="screen" aria-labelledby="unreadHeading">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">対象期間のチェック漏れ確認</p>
-          <h2 id="unreadHeading">未読取一覧</h2>
-        </div>
-        <button id="refreshUnreadButton" class="button button--secondary" type="button">一覧を更新</button>
-      </div>
-      <div class="filter-summary" aria-label="現在の絞込条件">
-        <p id="unreadPeriodLabel">対象期間：―</p>
-        <p id="unreadDepartmentLabel">対象部署：指定なし（全体）</p>
-      </div>
+      <div class="section-heading-row"><div><p class="eyebrow">3点照合が未完了の商品</p><h2 id="unreadHeading">未読取一覧</h2></div><button id="refreshUnreadButton" class="button button--secondary" type="button">更新</button></div>
+      <div class="filter-summary"><p id="unreadPeriodLabel">対象期間：―</p><p id="unreadDepartmentLabel">対象部署：指定なし（全体）</p></div>
       <div class="count-grid">
         <div class="count-card"><span>対象総数</span><strong id="unreadTargetCount">0</strong></div>
-        <div class="count-card count-card--read"><span>読取済</span><strong id="unreadReadCount">0</strong></div>
+        <div class="count-card count-card--read"><span>処理済</span><strong id="unreadReadCount">0</strong></div>
         <div class="count-card count-card--unread"><span>未読取</span><strong id="unreadRemainingCount">0</strong></div>
       </div>
       <div id="unreadList" class="unread-list"></div>
     </section>
 
-    <section id="masterSection" class="screen" aria-labelledby="masterHeading">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">データの取込と確認</p>
-          <h2 id="masterHeading">マスター管理</h2>
-        </div>
-      </div>
+    <section id="historySection" class="screen" aria-labelledby="historyHeading">
+      <div class="section-heading-row"><div><p class="eyebrow">スマホ内の作業実績</p><h2 id="historyHeading">読取履歴</h2></div><strong id="historyCount" class="history-count">0件</strong></div>
+      <section class="card history-filter-card">
+        <div class="history-date-row"><label>開始日<input id="historyStartDate" type="date"></label><label>終了日<input id="historyEndDate" type="date"></label></div>
+        <div class="history-select-row"><select id="historyFacility" aria-label="施設"><option value="">すべての施設</option></select><select id="historyDepartment" aria-label="部署"><option value="">すべての部署</option></select></div>
+        <div class="history-select-row"><select id="historyResult" aria-label="判定"><option value="">すべての判定</option><option value="OK">OK</option><option value="SKIP">SKIP</option><option value="NG">NG</option></select><input id="historySearch" type="search" placeholder="製品・品名・ラベル・JAN"></div>
+      </section>
+      <div class="history-actions"><button id="exportHistoryButton" class="button" type="button">CSV出力</button><button id="shareHistoryButton" class="button button--secondary" type="button">CSVをメール送信</button></div>
+      <p id="historyMessage" class="inline-message" aria-live="polite"></p>
+      <div id="historyList" class="history-list"></div>
+      <details class="danger-zone"><summary>履歴の管理</summary><p>履歴削除は元に戻せません。</p><button id="clearHistoryButton" class="button button--danger-light" type="button">履歴をすべて削除</button></details>
+    </section>
 
+    <section id="masterSection" class="screen" aria-labelledby="masterHeading">
+      <div class="section-heading-row"><div><p class="eyebrow">データの取込と確認</p><h2 id="masterHeading">マスター管理</h2></div></div>
       <section class="card master-import-card">
         <label class="file-button" for="masterFile">ラベルマスタ.tsvを選択</label>
         <input id="masterFile" class="visually-hidden" type="file" accept=".tsv,text/tab-separated-values,text/plain">
-        <p class="help-text">CP932（Shift-JIS系）のTSVを読み込みます。正常に検証できた場合だけ、現在のマスターと作業状態を置き換えます。</p>
+        <p class="help-text">CP932（Shift-JIS系）のTSVを毎回ファイル選択で読み込みます。正常に検証できた場合だけ、現在のマスターと作業状態を置き換えます。</p>
         <p id="importMessage" class="import-message" aria-live="polite"></p>
       </section>
-
-      <section class="card">
-        <h3>マスター情報</h3>
-        <dl class="master-details">
-          <div><dt>状態</dt><dd id="masterLoaded">未読込</dd></div>
-          <div><dt>ファイル名</dt><dd id="masterFileName">―</dd></div>
-          <div><dt>取込日時</dt><dd id="masterImportedAt">―</dd></div>
-          <div><dt>取込件数</dt><dd id="masterRowCount">0件</dd></div>
-          <div><dt>伝票日付 最小</dt><dd id="masterMinDate">―</dd></div>
-          <div><dt>伝票日付 最大</dt><dd id="masterMaxDate">―</dd></div>
-          <div><dt>重複ラベルキー</dt><dd id="masterDuplicateCount">0件</dd></div>
-        </dl>
-      </section>
-
-      <section class="card">
-        <h3>音声</h3>
-        <p class="help-text">iPhoneでは、最初に一度タップすると音声を再生しやすくなります。</p>
-        <button id="enableAudioButton" class="button button--secondary" type="button">音声を有効化</button>
-        <span id="audioStatus" class="inline-status">未確認</span>
-      </section>
+      <section class="card"><h3>マスター情報</h3><dl class="master-details">
+        <div><dt>状態</dt><dd id="masterLoaded">未読込</dd></div><div><dt>ファイル名</dt><dd id="masterFileName">―</dd></div><div><dt>取込日時</dt><dd id="masterImportedAt">―</dd></div><div><dt>取込件数</dt><dd id="masterRowCount">0件</dd></div><div><dt>伝票日付 最小</dt><dd id="masterMinDate">―</dd></div><div><dt>伝票日付 最大</dt><dd id="masterMaxDate">―</dd></div><div><dt>重複ラベルキー</dt><dd id="masterDuplicateCount">0件</dd></div>
+      </dl></section>
+      <section class="card"><h3>音声</h3><p class="help-text">iPhoneでは、最初に一度タップすると音声を再生しやすくなります。</p><button id="enableAudioButton" class="button button--secondary" type="button">音声を有効化</button> <span id="audioStatus" class="inline-status">未確認</span></section>
     </section>
   </main>
 
+  <div id="skipDialog" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="skipDialogTitle" hidden>
+    <div class="modal-card">
+      <h2 id="skipDialogTitle">この商品の照合をSKIPしますか？</h2>
+      <p id="skipConfirmProduct" class="modal-product"></p>
+      <label for="skipReason">理由（任意）</label>
+      <select id="skipReason"><option>作業者SKIP</option><option>バーコードなし</option><option>バーコード読取不可</option><option>商品確認済み</option><option>その他</option></select>
+      <div class="modal-actions"><button id="confirmSkipButton" class="button button--skip" type="button">SKIP実行</button><button id="cancelSkipButton" class="button button--secondary" type="button">戻る</button></div>
+    </div>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

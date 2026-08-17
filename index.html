@@ -36,26 +36,11 @@
         <p id="periodError" class="field-error" role="alert"></p>
       </div>
 
-      <div id="modePanel" class="mode-panel mode-panel--container">
-        <p class="mode-label">現在の読取モード</p>
-        <p id="modeName" class="mode-name">オリコン部署指定</p>
-        <p id="modeInstruction" class="mode-instruction">オリコンの部署ラベルを読み取ってください</p>
-        <div class="mode-actions">
-          <button id="containerModeButton" class="button button--light" type="button">オリコン部署を変更</button>
-          <button id="spdModeButton" class="button button--light" type="button" disabled>SPDラベル読取へ</button>
-          <button id="clearDepartmentButton" class="button button--danger-light" type="button" disabled>部署指定解除</button>
-        </div>
-      </div>
-
-      <section class="department-card" aria-labelledby="departmentHeading">
-        <p id="departmentHeading" class="card-label">現在のオリコン</p>
-        <p id="currentFacility" class="facility-name">施設未指定</p>
-        <p id="currentDepartment" class="department-name">部署ラベルを読み取ってください</p>
-        <p id="currentDepartmentCode" class="department-code">部署コード：―</p>
-      </section>
-
       <section id="resultPanel" class="result-panel result-panel--idle" aria-live="assertive" aria-atomic="true">
-        <p class="result-caption">最新判定</p>
+        <div class="result-topline">
+          <p class="result-caption">最新判定</p>
+          <p id="modeStatus" class="mode-status mode-status--container">● オリコン部署待ち</p>
+        </div>
         <p id="resultTitle" class="result-title">待機中</p>
         <p id="resultMessage" class="result-message">マスターを読み込んでください</p>
         <dl id="resultDetails" class="result-details"></dl>
@@ -66,6 +51,16 @@
         <div class="count-card count-card--read"><span>読取済</span><strong id="readCount">0</strong></div>
         <div class="count-card count-card--unread"><span>未読取</span><strong id="unreadCount">0</strong></div>
       </div>
+
+      <section class="department-card" aria-labelledby="departmentHeading">
+        <div class="department-heading-row">
+          <p id="departmentHeading" class="card-label">現在のオリコン</p>
+          <button id="clearDepartmentButton" class="button button--danger-light department-clear-button" type="button" disabled>部署指定解除</button>
+        </div>
+        <p id="currentFacility" class="facility-name">施設未指定</p>
+        <p id="currentDepartment" class="department-name">部署ラベルを読み取ってください</p>
+        <p id="currentDepartmentCode" class="department-code">部署コード：―</p>
+      </section>
 
       <details class="manual-panel">
         <summary>ローカルテスト用の手入力</summary>

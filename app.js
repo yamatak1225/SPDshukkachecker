@@ -10,6 +10,9 @@ const REQUIRED_HEADERS = [
   "ラベルキー", "払出予定伝票日付"
 ];
 
+// 実際のラベルマスタ.tsvで確認した製品番号列の見出し名。
+const PRODUCT_NUMBER_HEADER = "製品番号";
+
 const state = {
   masterRows: [],
   masterInfo: null,
@@ -27,6 +30,7 @@ const state = {
 
 let successSound = null;
 let alertSound = null;
+let completionSound = null;
 let elements = {};
 
 function normalizeHeader(value) {
@@ -90,6 +94,10 @@ function isValidDateKey(value) {
 
 function normalizeLabelKey(value) {
   return normalizeValue(value).replace(/\s+/g, "");
+}
+
+function getProductNumber(row) {
+  return normalizeValue(row?.[PRODUCT_NUMBER_HEADER]) || "―";
 }
 
 function parseTsv(text) {
@@ -329,6 +337,25 @@ function registerReadLabel(result) {
   addHistory(result);
   saveState();
   return true;
+}
+
+// 正常読取の直前と直後を比較し、指定部署・指定期間の未読取がゼロになった瞬間だけ完了音を選ぶ。
+function registerSuccessfulScan(result, effects = {}) {
+  const beforeCounts = getTargetCounts();
+  const registered = registerReadLabel(result);
+  const afterCounts = getTargetCounts();
+  const completed = registered
+    && Boolean(state.currentDepartment)
+    && validateTargetPeriod().ok
+    && beforeCounts.target > 0
+    && beforeCounts.unread > 0
+    && afterCounts.unread === 0;
+
+  if (registered) {
+    if (completed) (effects.playCompletion || playCompletionSound)();
+    else (effects.playSuccess || playSuccessSound)();
+  }
+  return { registered, completed, beforeCounts, afterCounts };
 }
 
 function parseDateInput(value) {
@@ -573,21 +600,29 @@ function initAudio() {
     alertSound = new Audio("alert.wav");
     alertSound.preload = "auto";
   }
+  if (!completionSound) {
+    completionSound = new Audio("complete.wav");
+    completionSound.preload = "auto";
+  }
   successSound.load();
   alertSound.load();
+  completionSound.load();
 }
 
 async function unlockAudio() {
   initAudio();
   try {
-    successSound.muted = true;
-    await successSound.play();
-    successSound.pause();
-    successSound.currentTime = 0;
-    successSound.muted = false;
+    const sounds = [successSound, alertSound, completionSound];
+    sounds.forEach((sound) => { sound.muted = true; });
+    await Promise.all(sounds.map((sound) => sound.play()));
+    sounds.forEach((sound) => {
+      sound.pause();
+      sound.currentTime = 0;
+      sound.muted = false;
+    });
     elements.audioStatus.textContent = "有効";
   } catch (error) {
-    successSound.muted = false;
+    [successSound, alertSound, completionSound].forEach((sound) => { if (sound) sound.muted = false; });
     elements.audioStatus.textContent = "有効化できません";
     console.error("音声の有効化に失敗しました。", error);
   }
@@ -595,7 +630,7 @@ async function unlockAudio() {
 
 function playSound(sound, label) {
   if (!sound) initAudio();
-  const target = label === "success" ? successSound : alertSound;
+  const target = label === "success" ? successSound : label === "completion" ? completionSound : alertSound;
   target.currentTime = 0;
   target.play().catch((error) => {
     console.error("音声を再生できません。", error);
@@ -605,6 +640,7 @@ function playSound(sound, label) {
 
 function playSuccessSound() { playSound(successSound, "success"); }
 function playAlertSound() { playSound(alertSound, "alert"); }
+function playCompletionSound() { playSound(completionSound, "completion"); }
 
 function handleContainerDepartmentScan(rawValue, effects = {}) {
   const result = setContainerDepartment(rawValue);
@@ -640,14 +676,13 @@ function processScan(rawValue) {
   } else {
     const result = validateSpdLabel(value);
     if (result.ok) {
-      registerReadLabel(result);
+      registerSuccessfulScan(result);
       renderAll();
       showResult("ok", "OK", result.message, [
         ["施設名称", result.row["施設名称"]], ["部署名称", result.row["部署名称"]],
-        ["品名", result.row["品名"]], ["ラベルキー", result.labelKey],
-        ["読取済件数", `${getTargetCounts().read}件`]
+        ["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]],
+        ["ラベルキー", result.labelKey]
       ]);
-      playSuccessSound();
     } else {
       addHistory(result);
       saveState();
@@ -655,10 +690,14 @@ function processScan(rawValue) {
       if (result.code === "DEPARTMENT_MISMATCH" && result.row) {
         details.push(
           ["オリコン側", `${state.currentDepartment.facilityName} ／ ${state.currentDepartment.departmentName}（${state.currentDepartment.departmentCode}）`],
-          ["SPDラベル側", `${result.row["施設名称"]} ／ ${result.row["部署名称"]}（${result.row["部署コード"]}）`]
+          ["SPDラベル側", `${result.row["施設名称"]} ／ ${result.row["部署名称"]}（${result.row["部署コード"]}）`],
+          ["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]]
         );
       } else if (result.row) {
-        details.push(["施設名称", result.row["施設名称"]], ["部署名称", result.row["部署名称"]], ["品名", result.row["品名"]]);
+        details.push(
+          ["施設名称", result.row["施設名称"]], ["部署名称", result.row["部署名称"]],
+          ["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]]
+        );
       }
       if (result.labelKey) details.push(["ラベルキー", result.labelKey]);
       showResult("ng", result.title, result.message, details);
@@ -666,17 +705,6 @@ function processScan(rawValue) {
     }
   }
   elements.manualScanInput.value = "";
-}
-
-function setMode(mode) {
-  if (mode === "spd" && !state.currentDepartment) {
-    showResult("ng", "オリコン部署未指定", "先にオリコンの部署ラベルを読み取ってください。", []);
-    playAlertSound();
-    return;
-  }
-  state.mode = mode;
-  saveState();
-  renderMode();
 }
 
 function handleClearDepartment() {
@@ -735,10 +763,8 @@ function showImportMessage(message, isError, isSuccess = false) {
 
 function renderMode() {
   const isSpd = state.mode === "spd" && state.currentDepartment;
-  elements.modePanel.className = `mode-panel ${isSpd ? "mode-panel--spd" : "mode-panel--container"}`;
-  elements.modeName.textContent = isSpd ? "SPDラベル連続読取" : "オリコン部署指定";
-  elements.modeInstruction.textContent = isSpd ? "SPDラベルQRを連続して読み取れます" : "オリコンの部署ラベルを読み取ってください";
-  elements.spdModeButton.disabled = !state.currentDepartment;
+  elements.modeStatus.className = `mode-status ${isSpd ? "mode-status--spd" : "mode-status--container"}`;
+  elements.modeStatus.textContent = isSpd ? "● SPDラベル読取中" : "● オリコン部署待ち";
   elements.clearDepartmentButton.disabled = !state.currentDepartment;
 }
 
@@ -790,10 +816,13 @@ function renderUnreadList() {
     title.textContent = row["品名"];
     const place = document.createElement("p");
     place.textContent = `${row["施設名称"]} ／ ${row["部署名称"]}`;
+    const productNumber = document.createElement("p");
+    productNumber.className = "item-product";
+    productNumber.textContent = `製品番号：${getProductNumber(row)}`;
     const key = document.createElement("p");
     key.className = "item-key";
     key.textContent = `ラベルキー：${row["ラベルキー"]}`;
-    article.append(title, place, key);
+    article.append(title, productNumber, place, key);
     elements.unreadList.append(article);
   });
 }
@@ -844,8 +873,7 @@ function switchSection(sectionId) {
 
 function cacheElements() {
   [
-    "masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modePanel", "modeName", "modeInstruction",
-    "containerModeButton", "spdModeButton", "clearDepartmentButton",
+    "masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modeStatus", "clearDepartmentButton",
     "currentFacility", "currentDepartment", "currentDepartmentCode", "resultPanel", "resultTitle", "resultMessage", "resultDetails",
     "targetCount", "readCount", "unreadCount", "manualScanInput", "manualScanButton", "scannerBufferStatus",
     "refreshUnreadButton", "unreadPeriodLabel", "unreadDepartmentLabel", "unreadTargetCount", "unreadReadCount", "unreadRemainingCount", "unreadList",
@@ -856,8 +884,6 @@ function cacheElements() {
 
 function bindEvents() {
   document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchSection(button.dataset.section)));
-  elements.containerModeButton.addEventListener("click", () => setMode("container"));
-  elements.spdModeButton.addEventListener("click", () => setMode("spd"));
   elements.clearDepartmentButton.addEventListener("click", handleClearDepartment);
   const handlePeriodChange = () => {
     state.targetStartDate = elements.targetStartDate.value;
@@ -898,7 +924,7 @@ if (typeof module !== "undefined" && module.exports) {
     state, parseTsv, normalizeQr, buildLabelKey, getExpectedCenterCode, rebuildIndexes,
     findLabel, setContainerDepartment, clearContainerDepartment, reconcileCurrentDepartment,
     validateSpdLabel, validateTargetPeriod, getCurrentTargetLabels, getUnreadLabels, getTargetCounts,
-    registerReadLabel, handleContainerDepartmentScan, applyMasterData,
-    isValidDateKey, normalizeLabelKey, parseDateInput
+    registerReadLabel, registerSuccessfulScan, handleContainerDepartmentScan, applyMasterData,
+    isValidDateKey, normalizeLabelKey, parseDateInput, getProductNumber
   };
 }

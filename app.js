@@ -3,7 +3,7 @@
 const STORAGE_KEYS = { master: "spd-shipping-master-v1", state: "spd-shipping-state-v2" };
 const HISTORY_DB_NAME = "spd-shipping-history-v1";
 const HISTORY_STORE_NAME = "scanHistory";
-const REQUIRED_HEADERS = ["施設コード", "施設名称", "部署コード", "部署名称", "品名", "製品番号", "JANコード", "ラベルキー", "払出予定伝票日付"];
+const REQUIRED_HEADERS = ["施設コード", "施設名称", "部署コード", "部署名称", "品名", "製品番号", "ラベルキー", "払出予定伝票日付"];
 const PRODUCT_NUMBER_HEADER = "製品番号";
 
 const state = {
@@ -81,7 +81,8 @@ function parseTsv(text) {
     const empty = REQUIRED_HEADERS.filter((header) => !row[header]);
     if (empty.length) { errors.push(`${line}行目：必須項目が空欄です（${empty.join("、")}）。`); return; }
     if (!isValidDateKey(row["払出予定伝票日付"])) { errors.push(`${line}行目：払出予定伝票日付「${row["払出予定伝票日付"]}」がyyyyMMdd形式の正しい日付ではありません。`); return; }
-    if (!normalizeJanForComparison(row["JANコード"])) { errors.push(`${line}行目：JANコード「${row["JANコード"]}」を12桁比較値へ変換できません。`); return; }
+    // JANコードは任意。値がある場合だけ、照合可能な形式かを検証する。
+    if (normalizeValue(row["JANコード"]) && !normalizeJanForComparison(row["JANコード"])) { errors.push(`${line}行目：JANコード「${row["JANコード"]}」を12桁比較値へ変換できません。`); return; }
     row["ラベルキー"] = normalizeLabelKey(row["ラベルキー"]);
     row.__lineNumber = line;
     rows.push(row);
@@ -218,6 +219,19 @@ function acceptPendingSpdLabel(result, effects = {}) {
   if (accepted) (effects.playSuccess || playSuccessSound)();
   return accepted;
 }
+function acceptOrAutoSkipSpdLabel(result, effects = {}) {
+  const accepted = acceptPendingSpdLabel(result, { playSuccess: effects.playSuccess || playSuccessSound });
+  if (!accepted) return { accepted: false, autoSkipped: false };
+  if (normalizeValue(result.row["JANコード"])) return { accepted: true, autoSkipped: false };
+
+  // SPD受付音の直後に自動SKIPする。通常のSKIP用3音は重ねず、最終件だけ完了音を少し遅らせる。
+  const playCompletionAfterSpd = effects.playCompletion || (() => setTimeout(playCompletionSound, 520));
+  const skipResult = executeSkip("マスターJANなし", {
+    playProductSuccess: () => {},
+    playCompletion: playCompletionAfterSpd
+  });
+  return { accepted: true, autoSkipped: true, skipResult };
+}
 function cancelPendingSpdLabel() { if (!state.pendingSpdLabel) return false; state.pendingSpdLabel = null; state.mode = state.currentDepartment ? "spd" : "container"; saveState(); return true; }
 
 function detectProductBarcodeType(rawValue) {
@@ -332,7 +346,8 @@ function executeSkip(reason = "作業者SKIP", effects = {}) {
   if (!canSkip()) return { ok: false, code: "SKIP_NOT_ALLOWED", title: "SKIPできません", message: "SPDラベル受付後の商品バーコード待ち状態でのみSKIPできます。" };
   const beforeCounts = getTargetCounts(), pending = state.pendingSpdLabel, product = pending.lastProductAttempt || null, skipReason = normalizeValue(reason) || "作業者SKIP";
   state.readLabelKeys.add(pending.labelKey); state.processedResults.set(pending.labelKey, "SKIP");
-  const record = createHistoryRecord({ result: "SKIP", detail: "作業者確認済み", pending, product, skipReason, completedAt: new Date().toISOString() });
+  const detail = skipReason === "マスターJANなし" ? "マスターJANなしによる自動SKIP" : "作業者確認済み";
+  const record = createHistoryRecord({ result: "SKIP", detail, pending, product, skipReason, completedAt: new Date().toISOString() });
   state.pendingSpdLabel = null; state.mode = "spd"; saveState(); void saveScanHistory(record);
   const afterCounts = getTargetCounts(), completed = didCompleteTarget(beforeCounts, afterCounts);
   if (completed) (effects.playCompletion || playCompletionSound)();
@@ -416,7 +431,18 @@ async function processScan(rawValue) {
     else { const result = handleContainerDepartmentScan(value); if (result.ok) { renderAll(); showResult("ok", "オリコン指定 OK", "SPDラベルQRを読み取ってください。", [["施設名称", result.department.facilityName], ["部署名称", result.department.departmentName], ["施設コード", result.department.facilityCode], ["部署コード", result.department.departmentCode]]); } else { void saveNgHistory(result); showResult("ng", result.title, result.message, []); } }
   } else if (state.mode === "spd") {
     if (!/^\d{32}$/.test(value)) { const result = { code: "SCAN_ORDER", title: "読取順序エラー", message: "SPDラベルを先に読み取ってください。" }; void saveNgHistory(result); showResult("ng", result.title, result.message, []); playAlertSound(); }
-    else { const result = validateSpdLabel(value); if (result.ok) { acceptPendingSpdLabel(result); renderAll(); showResult("pending", "商品バーコード待ち", result.message, [["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]], ["JAN", result.row["JANコード"]], ["ラベルキー", result.labelKey]]); } else { void saveNgHistory(result); showResult("ng", result.title, result.message, getResultDetails(result)); playAlertSound(); } }
+    else {
+      const result = validateSpdLabel(value);
+      if (result.ok) {
+        const accepted = acceptOrAutoSkipSpdLabel(result);
+        renderAll();
+        if (accepted.autoSkipped) {
+          showResult("skip", "自動SKIP", "マスターにJANコードがないため、SPDラベル確認で処理済にしました。", [["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]], ["SKIP理由", "マスターJANなし"], ["ラベルキー", result.labelKey]]);
+        } else {
+          showResult("pending", "商品バーコード待ち", result.message, [["製品番号", getProductNumber(result.row)], ["品名", result.row["品名"]], ["JAN", result.row["JANコード"]], ["ラベルキー", result.labelKey]]);
+        }
+      } else { void saveNgHistory(result); showResult("ng", result.title, result.message, getResultDetails(result)); playAlertSound(); }
+    }
   } else if (/^\d{20}$/.test(value) || /^\d{32}$/.test(value)) {
     const result = { code: "SCAN_ORDER", title: "読取順序エラー", message: "現在の商品照合を完了するか、SPDラベル読取を取消してください。", pending: state.pendingSpdLabel };
     void saveNgHistory(result); showResult("ng", result.title, result.message, getResultDetails(result)); playAlertSound();
@@ -462,7 +488,7 @@ function renderUnreadList() {
   if (!state.masterInfo) { elements.unreadList.append(createEmptyState("マスターを読み込んでください。")); return; }
   const period = validateTargetPeriod(); if (!period.ok) { elements.unreadList.append(createEmptyState(`対象期間を修正してください。${period.message}`)); return; }
   const rows = getUnreadLabels(); if (!rows.length) { elements.unreadList.append(createEmptyState(getTargetCounts().target ? "未読取ラベルはありません。" : "対象条件に該当するラベルはありません。")); return; }
-  rows.forEach((row) => { const article = document.createElement("article"), title = document.createElement("h3"), product = document.createElement("p"), place = document.createElement("p"), key = document.createElement("p"); article.className = "unread-item"; title.textContent = row["品名"]; product.className = "item-product"; product.textContent = `製品番号：${getProductNumber(row)}　JAN：${row["JANコード"]}`; place.textContent = `${row["施設名称"]} ／ ${row["部署名称"]}`; key.className = "item-key"; key.textContent = `ラベルキー：${row["ラベルキー"]}`; article.append(title, product, place, key); elements.unreadList.append(article); });
+  rows.forEach((row) => { const article = document.createElement("article"), title = document.createElement("h3"), product = document.createElement("p"), place = document.createElement("p"), key = document.createElement("p"); article.className = "unread-item"; title.textContent = row["品名"]; product.className = "item-product"; product.textContent = `製品番号：${getProductNumber(row)}　JAN：${row["JANコード"] || "―"}`; place.textContent = `${row["施設名称"]} ／ ${row["部署名称"]}`; key.className = "item-key"; key.textContent = `ラベルキー：${row["ラベルキー"]}`; article.append(title, product, place, key); elements.unreadList.append(article); });
 }
 function renderMasterInfo() { const info = state.masterInfo; elements.masterStatusBadge.textContent = info ? "マスター読込済み" : "マスター未読込"; elements.masterStatusBadge.className = `status-badge ${info ? "status-badge--ok" : "status-badge--ng"}`; elements.masterLoaded.textContent = info ? "読込済み" : "未読込"; elements.masterFileName.textContent = info?.fileName || "―"; elements.masterImportedAt.textContent = formatLocalDateTime(info?.importedAt); elements.masterRowCount.textContent = `${info?.rowCount || 0}件`; elements.masterMinDate.textContent = info ? formatDateForDisplay(keyToDateInput(info.minDate)) : "―"; elements.masterMaxDate.textContent = info ? formatDateForDisplay(keyToDateInput(info.maxDate)) : "―"; elements.masterDuplicateCount.textContent = `${info?.duplicateLabelKeyCount || 0}件`; }
 function renderScannerStatus() { elements.scannerBufferStatus.textContent = state.scannerBuffer ? `Bluetoothリーダー入力中（${state.scannerBuffer.length}文字）` : "Bluetoothリーダー入力待機中"; }
@@ -531,7 +557,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 if (typeof module !== "undefined" && module.exports) module.exports = {
   state, parseTsv, normalizeQr, buildLabelKey, getExpectedCenterCode, rebuildIndexes, findLabel,
   parseContainerBarcode, setContainerDepartment, clearContainerDepartment, reconcileCurrentDepartment,
-  validateSpdLabel, setPendingSpdLabel, acceptPendingSpdLabel, cancelPendingSpdLabel, validateTargetPeriod, getCurrentTargetLabels,
+  validateSpdLabel, setPendingSpdLabel, acceptPendingSpdLabel, acceptOrAutoSkipSpdLabel, cancelPendingSpdLabel, validateTargetPeriod, getCurrentTargetLabels,
   getUnreadLabels, getTargetCounts, normalizeJanForComparison, detectProductBarcodeType, parseGs1Barcode,
   extractJanFromBarcode, validateProductBarcode, completeItemCheck, canSkip, executeSkip,
   createHistoryRecord, saveScanHistory, loadScanHistory, clearScanHistory, filterHistory, buildHistoryCsv,

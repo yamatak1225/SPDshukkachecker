@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260818-1">
 </head>
 <body>
   <header class="app-header">
@@ -55,7 +55,9 @@
           <p><span>品名</span><strong id="pendingProductName">―</strong></p>
           <p class="pending-instruction">商品JAN / GS1-128を読み取ってください</p>
           <button id="skipButton" class="button button--skip" type="button">SKIP</button>
-          <button id="cancelPendingButton" class="button button--text" type="button">SPDラベル読取取消</button>
+          <div class="pending-cancel-area">
+            <button id="cancelPendingButton" class="button button--cancel" type="button">キャンセル</button>
+          </div>
         </div>
       </section>
 
@@ -102,7 +104,7 @@
         <div class="history-select-row"><select id="historyFacility" aria-label="施設"><option value="">すべての施設</option></select><select id="historyDepartment" aria-label="部署"><option value="">すべての部署</option></select></div>
         <div class="history-select-row"><select id="historyResult" aria-label="判定"><option value="">すべての判定</option><option value="OK">OK</option><option value="SKIP">SKIP</option><option value="NG">NG</option></select><input id="historySearch" type="search" placeholder="製品・品名・ラベル・JAN"></div>
       </section>
-      <div class="history-actions"><button id="exportHistoryButton" class="button" type="button">CSV出力</button><button id="shareHistoryButton" class="button button--secondary" type="button">CSVをメール送信</button></div>
+      <div class="history-actions"><button id="shareHistoryButton" class="button button--secondary" type="button">CSV出力</button></div>
       <p id="historyMessage" class="inline-message" aria-live="polite"></p>
       <div id="historyList" class="history-list"></div>
       <details class="danger-zone"><summary>履歴の管理</summary><p>履歴削除は元に戻せません。</p><button id="clearHistoryButton" class="button button--danger-light" type="button">履歴をすべて削除</button></details>
@@ -123,6 +125,6 @@
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260818-1"></script>
 </body>
 </html>

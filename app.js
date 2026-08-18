@@ -452,7 +452,7 @@ async function processScan(rawValue) {
   if (elements.manualScanInput) elements.manualScanInput.value = "";
 }
 function handleClearDepartment() { clearContainerDepartment(); renderAll(); showResult("idle", "オリコン指定解除", "20桁のオリコンラベルを読み取ってください。", []); }
-function handleCancelPending() { if (cancelPendingSpdLabel()) { renderAll(); showResult("idle", "SPDラベル読取取消", "SPDラベル待ちへ戻りました。", []); } }
+function handleCancelPending() { if (cancelPendingSpdLabel()) { renderAll(); showResult("idle", "キャンセル", "SPDラベル待ちへ戻りました。", []); } }
 function handleSkip() {
   const result = executeSkip("作業者SKIP");
   renderAll();
@@ -516,7 +516,6 @@ function buildHistoryCsv(records) {
 }
 function createHistoryCsvFile(records, name = `SPD読取履歴_${todayInputValue().replaceAll("-", "")}.csv`) { return new File(["\uFEFF", buildHistoryCsv(records)], name, { type: "text/csv;charset=utf-8" }); }
 function downloadFile(file, documentRef = document) { const url = URL.createObjectURL(file), anchor = documentRef.createElement("a"); anchor.href = url; anchor.download = file.name; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-function exportHistoryCsv(records = filterHistory(state.history, getHistoryFiltersFromUi())) { if (!records.length) throw new Error("出力対象の履歴がありません。"); const file = createHistoryCsvFile(records); downloadFile(file); return file; }
 // 現調くんと同じWeb Share APIを使い、非対応時だけダウンロードへ戻す。
 async function shareHistoryCsv(records = filterHistory(state.history, getHistoryFiltersFromUi()), env = {}) {
   if (!records.length) throw new Error("共有対象の履歴がありません。");
@@ -528,7 +527,7 @@ async function shareHistoryCsv(records = filterHistory(state.history, getHistory
 function renderAll() { elements.targetStartDate.value = state.targetStartDate; elements.targetEndDate.value = state.targetEndDate; renderMode(); renderDepartment(); renderPendingPanel(); renderCounts(); renderUnreadList(); renderMasterInfo(); renderScannerStatus(); renderHistory(); }
 function switchSection(sectionId) { document.querySelectorAll(".screen").forEach((section) => section.classList.toggle("is-active", section.id === sectionId)); document.querySelectorAll(".tab-button").forEach((button) => button.classList.toggle("is-active", button.dataset.section === sectionId)); if (sectionId === "unreadSection") renderUnreadList(); if (sectionId === "historySection") renderHistory(); window.scrollTo({ top: 0, behavior: "smooth" }); }
 function cacheElements() {
-  ["masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modeStatus", "clearDepartmentButton", "currentFacility", "currentDepartment", "currentDepartmentCode", "resultPanel", "resultTitle", "resultMessage", "resultDetails", "pendingProductPanel", "pendingProductNumber", "pendingProductName", "skipButton", "cancelPendingButton", "processingBreakdown", "targetCount", "readCount", "unreadCount", "manualScanInput", "manualScanButton", "scannerBufferStatus", "refreshUnreadButton", "unreadPeriodLabel", "unreadDepartmentLabel", "unreadTargetCount", "unreadReadCount", "unreadRemainingCount", "unreadList", "historyStartDate", "historyEndDate", "historyFacility", "historyDepartment", "historyResult", "historySearch", "historyCount", "historyList", "exportHistoryButton", "shareHistoryButton", "clearHistoryButton", "historyMessage", "masterFile", "importMessage", "masterLoaded", "masterFileName", "masterImportedAt", "masterRowCount", "masterMinDate", "masterMaxDate", "masterDuplicateCount", "enableAudioButton", "audioStatus"].forEach((id) => { elements[id] = document.getElementById(id); });
+  ["masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modeStatus", "clearDepartmentButton", "currentFacility", "currentDepartment", "currentDepartmentCode", "resultPanel", "resultTitle", "resultMessage", "resultDetails", "pendingProductPanel", "pendingProductNumber", "pendingProductName", "skipButton", "cancelPendingButton", "processingBreakdown", "targetCount", "readCount", "unreadCount", "manualScanInput", "manualScanButton", "scannerBufferStatus", "refreshUnreadButton", "unreadPeriodLabel", "unreadDepartmentLabel", "unreadTargetCount", "unreadReadCount", "unreadRemainingCount", "unreadList", "historyStartDate", "historyEndDate", "historyFacility", "historyDepartment", "historyResult", "historySearch", "historyCount", "historyList", "shareHistoryButton", "clearHistoryButton", "historyMessage", "masterFile", "importMessage", "masterLoaded", "masterFileName", "masterImportedAt", "masterRowCount", "masterMinDate", "masterMaxDate", "masterDuplicateCount", "enableAudioButton", "audioStatus"].forEach((id) => { elements[id] = document.getElementById(id); });
 }
 function bindEvents() {
   document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchSection(button.dataset.section)));
@@ -540,7 +539,6 @@ function bindEvents() {
   };
   elements.targetStartDate.addEventListener("change", handlePeriodChange); elements.targetEndDate.addEventListener("change", handlePeriodChange); elements.masterFile.addEventListener("change", () => importMaster(elements.masterFile.files[0])); elements.manualScanButton.addEventListener("click", () => void processScan(elements.manualScanInput.value)); elements.manualScanInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); void processScan(elements.manualScanInput.value); } }); elements.refreshUnreadButton.addEventListener("click", () => { renderCounts(); renderUnreadList(); });
   [elements.historyStartDate, elements.historyEndDate, elements.historyFacility, elements.historyDepartment, elements.historyResult].forEach((input) => input.addEventListener("change", renderHistory)); elements.historySearch.addEventListener("input", renderHistory);
-  elements.exportHistoryButton.addEventListener("click", () => { try { exportHistoryCsv(); elements.historyMessage.textContent = "CSVを出力しました。"; } catch (error) { elements.historyMessage.textContent = error.message; } });
   elements.shareHistoryButton.addEventListener("click", async () => { try { const method = await shareHistoryCsv(); elements.historyMessage.textContent = method === "shared" ? "共有画面を開きました。メールアプリを選択できます。" : "共有非対応のためCSVをダウンロードしました。"; } catch (error) { if (error.name !== "AbortError") elements.historyMessage.textContent = error.message; } });
   elements.clearHistoryButton.addEventListener("click", async () => { if (!confirm("スマホ内の読取履歴をすべて削除します。元に戻せません。削除しますか？")) return; await clearScanHistory(); elements.historyMessage.textContent = "読取履歴をすべて削除しました。"; });
   elements.enableAudioButton.addEventListener("click", unlockAudio); window.addEventListener("keydown", handleGlobalKeydown);

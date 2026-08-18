@@ -165,7 +165,7 @@ input[type="search"], select {
 .button--danger-light { color: #7d1710; background: #ffe3e0; border: 1px solid #ffb8b2; }
 .button--secondary { color: var(--navy); background: var(--blue-soft); border: 1px solid #b9cee3; }
 .button--skip { min-height: 56px; color: #3d2700; background: #f6b73c; border: 2px solid #a76400; font-size: 1.25rem; }
-.button--text { min-height: 38px; padding: 6px 10px; color: var(--muted); background: transparent; border: 1px solid #9ca9b5; font-size: .82rem; }
+.button--cancel { min-height: 44px; padding: 8px 18px; color: #8a1710; background: #ffe3e0; border: 2px solid #e28c85; font-size: .9rem; }
 .file-button { width: 100%; min-height: 58px; font-size: 1.05rem; }
 
 .department-card { padding: 11px 13px; text-align: center; }
@@ -210,7 +210,8 @@ input[type="search"], select {
 .pending-product-panel strong { overflow-wrap: anywhere; }
 .pending-product-panel .pending-instruction { display: block; margin: 11px 0 8px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,.65); font-weight: 900; text-align: center; }
 .pending-product-panel .button--skip { width: 100%; }
-.pending-product-panel .button--text { display: flex; margin: 7px auto 0; }
+.pending-cancel-area { margin-top: 20px; padding-top: 15px; border-top: 1px dashed rgba(92, 104, 117, .7); text-align: center; }
+.pending-cancel-area .button--cancel { width: min(65%, 230px); }
 
 .count-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
 .count-card { padding: 12px 5px; border: 1px solid var(--line); border-radius: 12px; background: #fff; text-align: center; }
@@ -244,8 +245,9 @@ input[type="search"], select {
 .history-filter-card { display: grid; gap: 8px; padding: 12px; }
 .history-date-row, .history-select-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .history-date-row label { display: grid; gap: 3px; color: var(--muted); font-size: .76rem; font-weight: 800; }
-.history-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 8px; margin-bottom: 6px; }
+.history-actions { margin-bottom: 6px; }
 .history-actions .button { min-height: 46px; padding: 8px; font-size: .88rem; }
+.history-actions .button { width: 100%; }
 .inline-message { min-height: 1.2em; margin-bottom: 8px; color: var(--muted); font-size: .8rem; font-weight: 700; }
 .history-list { display: grid; gap: 8px; }
 .history-item { padding: 11px 12px; border: 1px solid var(--line); border-left: 5px solid #7c8791; border-radius: 10px; background: #fff; }
@@ -319,6 +321,7 @@ input[type="search"], select {
   .pending-product-panel { margin-top: 8px; padding-top: 7px; }
   .pending-product-panel .pending-instruction { margin: 7px 0 6px; padding: 6px; font-size: .88rem; }
   .pending-product-panel .button--skip { min-height: 54px; }
+  .pending-cancel-area { margin-top: 22px; padding-top: 16px; }
 
   .count-grid { gap: 6px; margin-bottom: 6px; }
   .count-card { padding: 8px 4px; border-radius: 10px; }

@@ -399,7 +399,13 @@ async function loadMasterFile(file) {
   const parsed = parseTsv(await decodeMasterFile(file)), dates = parsed.rows.map((row) => row["払出予定伝票日付"]).sort();
   return { rows: parsed.rows, info: { fileName: file.name, facilityName: getMasterFacilityName(parsed.rows), importedAt: new Date().toISOString(), rowCount: parsed.rows.length, maxDate: dates.at(-1), fingerprint: createFingerprint(file, parsed.rows) } };
 }
-function applyMasterData(rows, info) { saveMaster(rows, info); state.masterRows = rows; state.masterInfo = info; rebuildIndexes(); state.readLabelKeys = new Set(); state.processedResults = new Map(); state.currentDepartment = null; state.pendingSpdLabel = null; state.mode = "container"; saveState(); }
+function applyMasterData(rows, info) {
+  const today = todayInputValue();
+  saveMaster(rows, info); state.masterRows = rows; state.masterInfo = info; rebuildIndexes();
+  state.readLabelKeys = new Set(); state.processedResults = new Map(); state.currentDepartment = null; state.pendingSpdLabel = null; state.mode = "container";
+  state.targetStartDate = today; state.targetEndDate = today;
+  saveState();
+}
 function createFingerprint(file, rows) { return `${file.name}:${file.size}:${file.lastModified}:${rows.length}:${rows[0]?.["ラベルキー"] || ""}:${rows.at(-1)?.["ラベルキー"] || ""}`; }
 async function importMaster(file) {
   if (!file) return; showImportMessage("TSVを読み込み、内容を検証しています…", false);
@@ -578,5 +584,5 @@ if (typeof module !== "undefined" && module.exports) module.exports = {
   extractJanFromBarcode, validateProductBarcode, completeItemCheck, canSkip, executeSkip,
   createHistoryRecord, saveScanHistory, loadScanHistory, clearScanHistory, filterHistory, buildHistoryCsv,
   shareHistoryCsv, handleContainerDepartmentScan, applyMasterData, isValidDateKey, normalizeLabelKey,
-  parseDateInput, getProductNumber, getUniqueFacilityNames, getMasterFacilityName
+  parseDateInput, todayInputValue, getProductNumber, getUniqueFacilityNames, getMasterFacilityName
 };

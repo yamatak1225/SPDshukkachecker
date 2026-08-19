@@ -358,7 +358,12 @@ function executeSkip(reason = "作業者SKIP", effects = {}) {
 function formatDateForDisplay(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value.replaceAll("-", "/") : "―"; }
 function keyToDateInput(value) { return /^\d{8}$/.test(value || "") ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : ""; }
 function todayInputValue() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
-function getDuplicateLabelKeyCount(rows) { const counts = new Map(); rows.forEach((row) => counts.set(row["ラベルキー"], (counts.get(row["ラベルキー"]) || 0) + 1)); return [...counts.values()].filter((count) => count > 1).length; }
+function getUniqueFacilityNames(rows) { return [...new Set(rows.map((row) => normalizeValue(row["施設名称"])).filter(Boolean))]; }
+function getMasterFacilityName(rows) {
+  const facilityNames = getUniqueFacilityNames(rows);
+  if (facilityNames.length !== 1) throw new Error(`施設名称は1ファイルにつき1種類にしてください。検出数：${facilityNames.length}`);
+  return facilityNames[0];
+}
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEYS.state, JSON.stringify({ readLabelKeys: [...state.readLabelKeys], processedResults: [...state.processedResults.entries()], targetStartDate: state.targetStartDate, targetEndDate: state.targetEndDate, currentDepartment: state.currentDepartment, masterFingerprint: state.masterInfo?.fingerprint || null }));
@@ -392,7 +397,7 @@ async function loadMasterFile(file) {
   if (!file) throw new Error("TSVファイルが選択されていません。");
   if (!/\.tsv$/i.test(file.name)) throw new Error(".tsvファイルを選択してください。");
   const parsed = parseTsv(await decodeMasterFile(file)), dates = parsed.rows.map((row) => row["払出予定伝票日付"]).sort();
-  return { rows: parsed.rows, info: { fileName: file.name, importedAt: new Date().toISOString(), rowCount: parsed.rows.length, minDate: dates[0], maxDate: dates.at(-1), duplicateLabelKeyCount: getDuplicateLabelKeyCount(parsed.rows), fingerprint: createFingerprint(file, parsed.rows) } };
+  return { rows: parsed.rows, info: { fileName: file.name, facilityName: getMasterFacilityName(parsed.rows), importedAt: new Date().toISOString(), rowCount: parsed.rows.length, maxDate: dates.at(-1), fingerprint: createFingerprint(file, parsed.rows) } };
 }
 function applyMasterData(rows, info) { saveMaster(rows, info); state.masterRows = rows; state.masterInfo = info; rebuildIndexes(); state.readLabelKeys = new Set(); state.processedResults = new Map(); state.currentDepartment = null; state.pendingSpdLabel = null; state.mode = "container"; saveState(); }
 function createFingerprint(file, rows) { return `${file.name}:${file.size}:${file.lastModified}:${rows.length}:${rows[0]?.["ラベルキー"] || ""}:${rows.at(-1)?.["ラベルキー"] || ""}`; }
@@ -490,7 +495,20 @@ function renderUnreadList() {
   const rows = getUnreadLabels(); if (!rows.length) { elements.unreadList.append(createEmptyState(getTargetCounts().target ? "未読取ラベルはありません。" : "対象条件に該当するラベルはありません。")); return; }
   rows.forEach((row) => { const article = document.createElement("article"), title = document.createElement("h3"), product = document.createElement("p"), place = document.createElement("p"), key = document.createElement("p"); article.className = "unread-item"; title.textContent = row["品名"]; product.className = "item-product"; product.textContent = `製品番号：${getProductNumber(row)}　JAN：${row["JANコード"] || "―"}`; place.textContent = `${row["施設名称"]} ／ ${row["部署名称"]}`; key.className = "item-key"; key.textContent = `ラベルキー：${row["ラベルキー"]}`; article.append(title, product, place, key); elements.unreadList.append(article); });
 }
-function renderMasterInfo() { const info = state.masterInfo; elements.masterStatusBadge.textContent = info ? "マスター読込済み" : "マスター未読込"; elements.masterStatusBadge.className = `status-badge ${info ? "status-badge--ok" : "status-badge--ng"}`; elements.masterLoaded.textContent = info ? "読込済み" : "未読込"; elements.masterFileName.textContent = info?.fileName || "―"; elements.masterImportedAt.textContent = formatLocalDateTime(info?.importedAt); elements.masterRowCount.textContent = `${info?.rowCount || 0}件`; elements.masterMinDate.textContent = info ? formatDateForDisplay(keyToDateInput(info.minDate)) : "―"; elements.masterMaxDate.textContent = info ? formatDateForDisplay(keyToDateInput(info.maxDate)) : "―"; elements.masterDuplicateCount.textContent = `${info?.duplicateLabelKeyCount || 0}件`; }
+function renderMasterInfo() {
+  const info = state.masterInfo;
+  const savedFacilityName = normalizeValue(info?.facilityName);
+  const restoredFacilityNames = getUniqueFacilityNames(state.masterRows);
+  const facilityName = savedFacilityName || (restoredFacilityNames.length === 1 ? restoredFacilityNames[0] : restoredFacilityNames.length > 1 ? "複数施設（再取込してください）" : "―");
+  elements.masterStatusBadge.textContent = info ? "マスター読込済み" : "マスター未読込";
+  elements.masterStatusBadge.className = `status-badge ${info ? "status-badge--ok" : "status-badge--ng"}`;
+  elements.masterLoaded.textContent = info ? "読込済み" : "未読込";
+  elements.masterFileName.textContent = info?.fileName || "―";
+  elements.masterFacilityName.textContent = info ? facilityName : "―";
+  elements.masterImportedAt.textContent = formatLocalDateTime(info?.importedAt);
+  elements.masterRowCount.textContent = `${info?.rowCount || 0}件`;
+  elements.masterMaxDate.textContent = info ? formatDateForDisplay(keyToDateInput(info.maxDate)) : "―";
+}
 function renderScannerStatus() { elements.scannerBufferStatus.textContent = state.scannerBuffer ? `Bluetoothリーダー入力中（${state.scannerBuffer.length}文字）` : "Bluetoothリーダー入力待機中"; }
 
 function getHistoryFiltersFromUi() { return { startDate: elements.historyStartDate.value, endDate: elements.historyEndDate.value, facility: elements.historyFacility.value, department: elements.historyDepartment.value, result: elements.historyResult.value, search: elements.historySearch.value }; }
@@ -527,7 +545,7 @@ async function shareHistoryCsv(records = filterHistory(state.history, getHistory
 function renderAll() { elements.targetStartDate.value = state.targetStartDate; elements.targetEndDate.value = state.targetEndDate; renderMode(); renderDepartment(); renderPendingPanel(); renderCounts(); renderUnreadList(); renderMasterInfo(); renderScannerStatus(); renderHistory(); }
 function switchSection(sectionId) { document.querySelectorAll(".screen").forEach((section) => section.classList.toggle("is-active", section.id === sectionId)); document.querySelectorAll(".tab-button").forEach((button) => button.classList.toggle("is-active", button.dataset.section === sectionId)); if (sectionId === "unreadSection") renderUnreadList(); if (sectionId === "historySection") renderHistory(); window.scrollTo({ top: 0, behavior: "smooth" }); }
 function cacheElements() {
-  ["masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modeStatus", "clearDepartmentButton", "currentFacility", "currentDepartment", "currentDepartmentCode", "resultPanel", "resultTitle", "resultMessage", "resultDetails", "pendingProductPanel", "pendingProductNumber", "pendingProductName", "skipButton", "cancelPendingButton", "processingBreakdown", "targetCount", "readCount", "unreadCount", "manualScanInput", "manualScanButton", "scannerBufferStatus", "refreshUnreadButton", "unreadPeriodLabel", "unreadDepartmentLabel", "unreadTargetCount", "unreadReadCount", "unreadRemainingCount", "unreadList", "historyStartDate", "historyEndDate", "historyFacility", "historyDepartment", "historyResult", "historySearch", "historyCount", "historyList", "shareHistoryButton", "clearHistoryButton", "historyMessage", "masterFile", "importMessage", "masterLoaded", "masterFileName", "masterImportedAt", "masterRowCount", "masterMinDate", "masterMaxDate", "masterDuplicateCount", "enableAudioButton", "audioStatus"].forEach((id) => { elements[id] = document.getElementById(id); });
+  ["masterStatusBadge", "targetStartDate", "targetEndDate", "periodError", "modeStatus", "clearDepartmentButton", "currentFacility", "currentDepartment", "currentDepartmentCode", "resultPanel", "resultTitle", "resultMessage", "resultDetails", "pendingProductPanel", "pendingProductNumber", "pendingProductName", "skipButton", "cancelPendingButton", "processingBreakdown", "targetCount", "readCount", "unreadCount", "manualScanInput", "manualScanButton", "scannerBufferStatus", "refreshUnreadButton", "unreadPeriodLabel", "unreadDepartmentLabel", "unreadTargetCount", "unreadReadCount", "unreadRemainingCount", "unreadList", "historyStartDate", "historyEndDate", "historyFacility", "historyDepartment", "historyResult", "historySearch", "historyCount", "historyList", "shareHistoryButton", "clearHistoryButton", "historyMessage", "masterFile", "importMessage", "masterLoaded", "masterFileName", "masterFacilityName", "masterImportedAt", "masterRowCount", "masterMaxDate", "enableAudioButton", "audioStatus"].forEach((id) => { elements[id] = document.getElementById(id); });
 }
 function bindEvents() {
   document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchSection(button.dataset.section)));
@@ -560,5 +578,5 @@ if (typeof module !== "undefined" && module.exports) module.exports = {
   extractJanFromBarcode, validateProductBarcode, completeItemCheck, canSkip, executeSkip,
   createHistoryRecord, saveScanHistory, loadScanHistory, clearScanHistory, filterHistory, buildHistoryCsv,
   shareHistoryCsv, handleContainerDepartmentScan, applyMasterData, isValidDateKey, normalizeLabelKey,
-  parseDateInput, getProductNumber
+  parseDateInput, getProductNumber, getUniqueFacilityNames, getMasterFacilityName
 };
